@@ -155,6 +155,7 @@ def world(color, strength, name="BOB_World"):
 
 
 def build_studio():
+    bpy.context.scene["bob_scene_tint"] = 0.0     # exact reference palette in the studio
     coll = env_collection("ENV_Studio")
     # cyclorama: floor curving up into a back wall
     import bmesh
@@ -607,6 +608,7 @@ def do_cinematic(samples):
     if not bpy.data.collections.get("ENV_Cinematic"):
         build_cinematic()
     set_env_visible("ENV_Cinematic")
+    bpy.context.scene["bob_scene_tint"] = 0.6     # character picks up the set's light hue
     r = rig()
     reset_pose()
     if r:
@@ -622,6 +624,7 @@ def do_cinematic(samples):
     if r:
         r.rotation_euler = (0, 0, 0)
     reset_pose()
+    bpy.context.scene["bob_scene_tint"] = 0.0
     set_env_visible("ENV_Studio")
 
 

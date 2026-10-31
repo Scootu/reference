@@ -380,9 +380,66 @@ def add_bump(nt, bsdf, tex_node, strength=0.1, distance=0.02, output="Fac"):
 PAINT_LIGHT = Vector((-0.55, -0.45, 0.70)).normalized()
 
 
-def flat_mat(name, lit, shade=None, rim=None, rim_width=0.22, softness=0.35, alpha=1.0):
+def scene_light_group():
+    """Node group BOB_SceneLight: lets the flat character pick up the *hue* of the set
+    lighting (blue moonlight, orange sunset) the way the reference characters do,
+    while keeping the painted look. Strength = scene custom property "bob_scene_tint"
+    (0 = exact palette, ~0.6 = cinematic). EEVEE only (Shader to RGB); with 0 it is a
+    no-op in any engine."""
+    ng = bpy.data.node_groups.get("BOB_SceneLight")
+    if ng:
+        return ng
+    ng = bpy.data.node_groups.new("BOB_SceneLight", "ShaderNodeTree")
+    ng.interface.new_socket("Color", in_out="INPUT", socket_type="NodeSocketColor")
+    ng.interface.new_socket("Color", in_out="OUTPUT", socket_type="NodeSocketColor")
+    n = ng.nodes
+    gi, go = n.new("NodeGroupInput"), n.new("NodeGroupOutput")
+    diff = n.new("ShaderNodeBsdfDiffuse")
+    diff.inputs["Color"].default_value = (1, 1, 1, 1)
+    s2r = n.new("ShaderNodeShaderToRGB")
+    bw = n.new("ShaderNodeRGBToBW")
+    mx = n.new("ShaderNodeMath")
+    mx.operation = "MAXIMUM"
+    mx.inputs[1].default_value = 0.001
+    hue = n.new("ShaderNodeVectorMath")
+    hue.operation = "DIVIDE"
+    bright = n.new("ShaderNodeMapRange")
+    bright.inputs["To Min"].default_value = 0.45
+    bright.inputs["To Max"].default_value = 1.0
+    bright.clamp = True
+    scale = n.new("ShaderNodeVectorMath")
+    scale.operation = "SCALE"
+    mul = n.new("ShaderNodeVectorMath")
+    mul.operation = "MULTIPLY"
+    attr = n.new("ShaderNodeAttribute")
+    attr.attribute_type = "VIEW_LAYER"
+    attr.attribute_name = "bob_scene_tint"
+    mix = n.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    mix.clamp_factor = True
+    L = ng.links.new
+    L(diff.outputs[0], s2r.inputs[0])
+    L(s2r.outputs["Color"], bw.inputs[0])
+    L(bw.outputs[0], mx.inputs[0])
+    L(s2r.outputs["Color"], hue.inputs[0])
+    L(mx.outputs[0], hue.inputs[1])
+    L(bw.outputs[0], bright.inputs["Value"])
+    L(hue.outputs["Vector"], scale.inputs[0])
+    L(bright.outputs["Result"], scale.inputs["Scale"])
+    L(gi.outputs["Color"], mul.inputs[0])
+    L(scale.outputs["Vector"], mul.inputs[1])
+    L(attr.outputs["Fac"], mix.inputs["Factor"])
+    L(gi.outputs["Color"], mix.inputs["A"])
+    L(mul.outputs["Vector"], mix.inputs["B"])
+    L(mix.outputs["Result"], go.inputs["Color"])
+    return ng
+
+
+def flat_mat(name, lit, shade=None, rim=None, rim_width=0.22, softness=0.35, alpha=1.0,
+             feather=0.0):
     """Unlit 2.5D fill: lit/shade colours blended by a fixed painted light direction,
-    plus an optional soft rim band on the lit side (as on the reference robe)."""
+    plus an optional soft rim band on the lit side (as on the reference robe).
+    feather > 0 gives drawn strokes soft brush edges (uses the decal UVs)."""
     mat = bpy.data.materials.get(name)
     if mat:
         bpy.data.materials.remove(mat)
@@ -437,13 +494,63 @@ def flat_mat(name, lit, shade=None, rim=None, rim_width=0.22, softness=0.35, alp
             nt.links.new(ramp.outputs["Color"], mix.inputs["A"])
             col_socket = mix.outputs["Result"]
         nt.links.new(col_socket, em.inputs["Color"])
+    # route the final colour through the scene-light tint group
+    grp = nt.nodes.new("ShaderNodeGroup")
+    grp.node_tree = scene_light_group()
+    col_in = em.inputs["Color"]
+    if col_in.links:
+        src = col_in.links[0].from_socket
+        nt.links.remove(col_in.links[0])
+        nt.links.new(src, grp.inputs["Color"])
+    else:
+        grp.inputs["Color"].default_value = col_in.default_value
+    nt.links.new(grp.outputs["Color"], col_in)
     shader_out = em.outputs[0]
+    if feather > 0.0:
+        tc = nt.nodes.new("ShaderNodeTexCoord")
+        sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(tc.outputs["UV"], sep.inputs[0])
+
+        def edge(sock, width):
+            inv = nt.nodes.new("ShaderNodeMath")
+            inv.operation = "SUBTRACT"
+            inv.inputs[0].default_value = 1.0
+            nt.links.new(sock, inv.inputs[1])
+            mn = nt.nodes.new("ShaderNodeMath")
+            mn.operation = "MINIMUM"
+            nt.links.new(sock, mn.inputs[0])
+            nt.links.new(inv.outputs[0], mn.inputs[1])
+            mr2 = nt.nodes.new("ShaderNodeMapRange")
+            mr2.interpolation_type = "SMOOTHSTEP"
+            mr2.inputs["From Min"].default_value = 0.0
+            mr2.inputs["From Max"].default_value = width
+            nt.links.new(mn.outputs[0], mr2.inputs["Value"])
+            return mr2.outputs["Result"]
+
+        a_v = edge(sep.outputs["Y"], feather)
+        a_u = edge(sep.outputs["X"], feather * 0.3)
+        am = nt.nodes.new("ShaderNodeMath")
+        am.operation = "MULTIPLY"
+        nt.links.new(a_v, am.inputs[0])
+        nt.links.new(a_u, am.inputs[1])
+        tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+        mxf = nt.nodes.new("ShaderNodeMixShader")
+        nt.links.new(am.outputs[0], mxf.inputs[0])
+        nt.links.new(tr.outputs[0], mxf.inputs[1])
+        nt.links.new(em.outputs[0], mxf.inputs[2])
+        shader_out = mxf.outputs[0]
+        # smooth alpha (no dither grain) for the soft stroke edges
+        for attr, val in (("surface_render_method", "BLENDED"), ("blend_method", "BLEND")):
+            try:
+                setattr(mat, attr, val)
+            except Exception:
+                pass
     if alpha < 1.0:
         tr = nt.nodes.new("ShaderNodeBsdfTransparent")
         mx = nt.nodes.new("ShaderNodeMixShader")
         mx.inputs[0].default_value = alpha
         nt.links.new(tr.outputs[0], mx.inputs[1])
-        nt.links.new(em.outputs[0], mx.inputs[2])
+        nt.links.new(shader_out, mx.inputs[2])
         shader_out = mx.outputs[0]
     nt.links.new(shader_out, out.inputs["Surface"])
     mat.diffuse_color = (*lin(lit), 1)
@@ -475,7 +582,17 @@ def outline_material():
     return mat
 
 
-def add_outline(ob, thickness=0.026):
+def add_outline(ob, thickness=0.026, wobble=0.45, freq=2.4):
+    """Charcoal hull outline whose weight varies smoothly along the contour like a
+    hand-drawn brush line (thickness between (1 - wobble) and 1 x base)."""
+    from mathutils import noise
+    vg = ob.vertex_groups.get("outline_weight") or ob.vertex_groups.new(name="outline_weight")
+    mw = ob.matrix_world
+    for v in ob.data.vertices:
+        p = (mw @ v.co) * freq
+        w = 0.5 + 0.5 * noise.noise(p)
+        vg.add([v.index], min(1.0, max(0.0, w)), "REPLACE")
+    thickness *= 1.18
     mat = outline_material()
     if mat.name not in ob.data.materials:
         ob.data.materials.append(mat)
@@ -488,6 +605,8 @@ def add_outline(ob, thickness=0.026):
     mod.use_even_offset = True
     mod.material_offset = idx
     mod.material_offset_rim = idx
+    mod.vertex_group = vg.name
+    mod.thickness_vertex_group = 1.0 - wobble
     return mod
 
 
@@ -495,10 +614,11 @@ def get_materials():
     """Create (or fetch) every Bob material for the flat 2.5D look. Returns dict."""
     M = {}
     M["skin"] = flat_mat("BOB_Skin", C["skin"], C["skin_shade"], softness=0.55)
-    M["ink"] = flat_mat("BOB_Ink", C["stroke"])
+    M["ink"] = flat_mat("BOB_Ink", C["stroke"], feather=0.12)
+    M["ink_solid"] = flat_mat("BOB_InkSolid", C["stroke"])
     M["outline_ink"] = flat_mat("BOB_LineInk", C["ink"])
     M["eye_white"] = flat_mat("BOB_EyeWhite", C["eye_white"])
-    M["mouth"] = flat_mat("BOB_Mouth", C["mouth"])
+    M["mouth"] = flat_mat("BOB_Mouth", C["mouth"], feather=0.10)
     M["teeth"] = flat_mat("BOB_Teeth", C["teeth"])
     M["tongue"] = flat_mat("BOB_Tongue", C["tongue"])
 

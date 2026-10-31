@@ -93,7 +93,7 @@ def disc(r):
 # ----------------------------------------------------------------------------
 
 def eye_shapes(side):
-    dash = stroke(0.088, 0.023, p=3.0)
+    dash = stroke(0.092, 0.027, p=3.0)
     closed = stroke(0.085, 0.0095, c=lambda u: -0.004 - 0.008 * u * u, p=3.0)
     happy = stroke(0.082, 0.012, c=lambda u: 0.024 * (1 - u * u) - 0.012, p=3.0)
     angry = stroke(0.086, 0.025, c=lambda u: 0.024 * u * side - 0.004, p=3.0)
@@ -120,14 +120,14 @@ def build_eyes(surf, M, coll):
         base, keys = eye_shapes(side)
         build_decal(f"BOB_Eye_{tag}", surf, base, keys, cx, cz, 0.004, [M["ink"]], coll)
         # round "surprised" eye: ring (filled ink disc) + white + dot pupil
-        build_decal(f"BOB_EyeRing_{tag}", surf, gone, {"Show": disc(0.090)}, cx, cz + 0.01,
-                    0.0035, [M["ink"]], coll)
+        build_decal(f"BOB_EyeRing_{tag}", surf, gone, {"Show": disc(0.094)}, cx, cz + 0.01,
+                    0.0035, [M["ink_solid"]], coll)
         build_decal(f"BOB_EyeWhite_{tag}", surf, gone, {"Show": disc(0.066)}, cx, cz + 0.01,
                     0.0055, [M["eye_white"]], coll)
         build_decal(f"BOB_EyePupil_{tag}", surf, gone,
                     {"Show": disc(0.026), "LookX": (gone, LOOK_DX * 0.9, 0.0),
                      "LookY": (gone, 0.0, LOOK_DZ * 0.9)},
-                    cx, cz + 0.01, 0.0075, [M["ink"]], coll)
+                    cx, cz + 0.01, 0.0075, [M["ink_solid"]], coll)
 
 
 # ----------------------------------------------------------------------------
@@ -138,7 +138,7 @@ def build_brows(surf, M, coll):
     for side, tag in ((1, "L"), (-1, "R")):
         def brow(lift=0.0, slope=0.0, arch=0.012, side=side):
             # slope > 0 lowers the inner end (towards the centre line) => angry
-            return stroke(0.092, 0.017,
+            return stroke(0.096, 0.020,
                           c=lambda u: arch * (1 - u * u) + lift + slope * u * side, p=2.2)
         keys = {
             "Up": brow(0.060),

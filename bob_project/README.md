@@ -34,3 +34,18 @@ blender -b blender/bob_character.blend --python scripts/render_tests.py -- --all
 Renders use Cycles with OpenImageDenoise. On a GPU, set
 *Preferences → System → Cycles Render Devices* and change `cy.device` in
 `render_tests.setup_cycles` to `"GPU"`.
+
+## Look controls (final pass)
+
+- **Scene light tint:** the scene custom property `bob_scene_tint` (Scene Properties → Custom
+  Properties) makes Bob pick up the *hue* of the set lighting (blue moonlight, orange sunset)
+  while staying flat, as the reference characters do.
+  - `0.0` = exact reference palette (studio)
+  - `0.5` – `0.7` = cinematic scenes
+  - EEVEE only.
+- **Brush-like strokes:**
+  - Eyes, brows and mouth have slightly soft edges. The round "surprised" eye stays crisp.
+  - Outlines vary smoothly in weight (vertex group `outline_weight` + Solidify factor), like a
+    hand-drawn line.
+- **Render on your GPU with EEVEE:** set Preferences → System → GPU backend. Raise
+  Render → Sampling to 64 or more for the cleanest soft edges.
