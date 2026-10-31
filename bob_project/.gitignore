@@ -1,2 +1,4 @@
 *.blend1
 renders/wip/
+__pycache__/
+*.pyc
