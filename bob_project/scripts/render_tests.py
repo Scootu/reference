@@ -603,29 +603,37 @@ def do_interaction(samples):
     reset_pose()
 
 
-def do_cinematic(samples):
+def do_cinematic(samples, moods=("palace", "sunset", "night")):
+    """The interior set, relit per mood with the glassy compositor grade."""
+    import glassy_grade as gg
     setup_cycles(samples, (1920, 1080))
     if not bpy.data.collections.get("ENV_Cinematic"):
         build_cinematic()
     set_env_visible("ENV_Cinematic")
-    bpy.context.scene["bob_scene_tint"] = 0.6     # character picks up the set's light hue
-    r = rig()
+    scn = bpy.context.scene
+    for mood in moods:
+        r = rig()
+        reset_pose()
+        if r:
+            set_expression({"palace": "Thinking", "sunset": "Happy", "night": "Surprised"}
+                           .get(mood, "Neutral"))
+            head = r.pose.bones["head"]
+            head.rotation_mode = "XYZ"
+            head.rotation_euler = (math.radians(4), math.radians(-6), math.radians(-14))
+            r.rotation_euler = (0, 0, math.radians(-18))
+            bpy.context.view_layer.update()
+        gg.apply_mood(mood)
+        gg.apply_grade(scn, mood)
+        render(os.path.join(RENDERS, "cinematic_tests", f"10_cinematic_{mood}.png"),
+               dict(target=Vector((-0.75, 0.6, 1.55)), dist=7.6, yaw=14, pitch=7, lens=38,
+                    fstop=2.2, focus=FOCUS_HEAD + Vector((0, -0.3, 0))))
+        gg.clear_grade(scn)
+        if r:
+            r.rotation_euler = (0, 0, 0)
     reset_pose()
-    if r:
-        set_expression("Thinking")
-        head = r.pose.bones["head"]
-        head.rotation_mode = "XYZ"
-        head.rotation_euler = (math.radians(4), math.radians(-6), math.radians(-14))
-        r.rotation_euler = (0, 0, math.radians(-18))
-        bpy.context.view_layer.update()
-    render(os.path.join(RENDERS, "cinematic_tests", "10_cinematic_interior.png"),
-           dict(target=Vector((-0.75, 0.6, 1.55)), dist=7.6, yaw=14, pitch=7, lens=38,
-                fstop=2.2, focus=FOCUS_HEAD + Vector((0, -0.3, 0))))
-    if r:
-        r.rotation_euler = (0, 0, 0)
-    reset_pose()
-    bpy.context.scene["bob_scene_tint"] = 0.0
+    scn["bob_scene_tint"] = 0.0
     set_env_visible("ENV_Studio")
+    world((0.62, 0.66, 0.72), 0.35)
 
 
 def parse():
@@ -655,6 +663,9 @@ def save_env_files():
                                 copy=True)
     build_cinematic()
     set_env_visible("ENV_Cinematic")
+    import glassy_grade as gg
+    gg.apply_mood("palace")
+    gg.apply_grade(bpy.context.scene, "palace")
     camera("CAM_Cinematic", target=Vector((-0.75, 0.6, 1.55)), dist=7.6, yaw=14, pitch=7,
            lens=38, fstop=2.2, focus=FOCUS_HEAD + Vector((0, -0.3, 0)))
     setup_cycles(128, (1920, 1080))
