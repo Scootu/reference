@@ -31,9 +31,9 @@ blender -b --python scripts/build_all.py
 blender -b blender/bob_character.blend --python scripts/render_tests.py -- --all --save-envs
 ```
 
-Renders use Cycles with OpenImageDenoise. On a GPU, set
-*Preferences → System → Cycles Render Devices* and change `cy.device` in
-`render_tests.setup_cycles` to `"GPU"`.
+Renders use EEVEE with the Standard view transform, which runs on your GPU automatically.
+`ENGINE` at the top of `render_tests.py` can be switched to `"CYCLES"` for the environments.
+The scene-light tint needs EEVEE.
 
 ## Look controls (final pass)
 
