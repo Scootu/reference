@@ -23,20 +23,20 @@ import math
 PRESETS = {
     #            lift (shadow tint)     gain (highlight tint)   sat   bloom thr/str  diffusion  tint
     "day":    dict(lift=(0.030, 0.026, 0.050), gain=(1.03, 1.00, 0.95), sat=1.12,
-                   thr=0.80, bloom=0.55, diff=0.18, tint=0.35,
-                   sun=(1.0, 0.93, 0.80), sun_e=4.0, sun_elev=40, world=(0.55, 0.65, 0.85),
+                   thr=0.85, bloom=0.55, diff=0.14, tint=0.35,
+                   sun=(1.0, 0.93, 0.80), sun_e=2.8, sun_elev=40, world=(0.55, 0.65, 0.85),
                    world_e=0.45, lamp=(1.0, 0.70, 0.40), lamp_e=60),
     "sunset": dict(lift=(0.065, 0.025, 0.075), gain=(1.10, 0.95, 0.80), sat=1.20,
-                   thr=0.70, bloom=0.85, diff=0.28, tint=0.65,
-                   sun=(1.0, 0.55, 0.28), sun_e=5.0, sun_elev=8, world=(0.55, 0.35, 0.55),
+                   thr=0.80, bloom=0.75, diff=0.18, tint=0.65,
+                   sun=(1.0, 0.55, 0.28), sun_e=2.6, sun_elev=8, world=(0.55, 0.35, 0.55),
                    world_e=0.40, lamp=(1.0, 0.60, 0.30), lamp_e=90),
     "night":  dict(lift=(0.030, 0.035, 0.090), gain=(0.90, 0.96, 1.12), sat=1.10,
                    thr=0.60, bloom=0.90, diff=0.25, tint=0.70,
                    sun=(0.55, 0.68, 1.0), sun_e=1.6, sun_elev=35, world=(0.10, 0.13, 0.32),
                    world_e=0.35, lamp=(1.0, 0.58, 0.28), lamp_e=180),
     "palace": dict(lift=(0.055, 0.028, 0.050), gain=(1.08, 0.97, 0.88), sat=1.16,
-                   thr=0.72, bloom=0.70, diff=0.22, tint=0.50,
-                   sun=(1.0, 0.82, 0.60), sun_e=3.0, sun_elev=30, world=(0.45, 0.32, 0.40),
+                   thr=0.80, bloom=0.65, diff=0.16, tint=0.50,
+                   sun=(1.0, 0.82, 0.60), sun_e=2.0, sun_elev=30, world=(0.45, 0.32, 0.40),
                    world_e=0.35, lamp=(1.0, 0.62, 0.32), lamp_e=140),
 }
 
@@ -160,11 +160,14 @@ def apply_grade(scene, preset="palace"):
         cb.correction_method = "LIFT_GAMMA_GAIN"
         cb.lift = tuple(1.0 + 0.9 * c for c in p["lift"])
         cb.gain = p["gain"]
+        cb.gamma = (0.88, 0.88, 0.88)
     else:
         _set(cb, "Lift/Gamma/Gain", "Type")
         # neutral lift is white (1,1,1); values above 1 raise and tint the blacks
         _set(cb, (*[1.0 + 0.9 * c for c in p["lift"]], 1.0), "Color Lift")
         _set(cb, (*p["gain"], 1.0), "Color Gain")
+        # gamma below 1 deepens mid-tones so the glow sits on rich colour, not grey
+        _set(cb, (0.88, 0.88, 0.88, 1.0), "Color Gamma")
     L(img, cb.inputs["Image"])
     img = cb.outputs[0]
     # keep the saturation stage in display range (HSV maths flips hues above 1.0)
