@@ -14,19 +14,20 @@ from mathutils import Vector, Matrix
 import bob_common as bc
 
 # (z, rx, ry) from the collar down to the hem
+# torso column -> sash -> slightly wider skirt column (reference: 0.69 HW / 0.82 HW)
 PROFILE = [
     (1.775, 0.150, 0.140),
-    (1.735, 0.215, 0.180),
-    (1.680, 0.310, 0.220),
-    (1.615, 0.370, 0.250),
-    (1.530, 0.388, 0.268),
-    (1.390, 0.372, 0.274),
-    (1.230, 0.360, 0.274),
-    (1.090, 0.366, 0.280),
-    (0.950, 0.395, 0.296),
-    (0.760, 0.440, 0.322),
-    (0.590, 0.478, 0.345),
-    (0.460, 0.500, 0.360),
+    (1.735, 0.225, 0.185),
+    (1.680, 0.325, 0.235),
+    (1.620, 0.375, 0.262),
+    (1.530, 0.390, 0.275),
+    (1.350, 0.385, 0.280),
+    (1.170, 0.380, 0.282),
+    (1.080, 0.392, 0.288),
+    (0.990, 0.420, 0.302),
+    (0.800, 0.438, 0.315),
+    (0.550, 0.452, 0.325),
+    (0.300, 0.466, 0.335),
 ]
 HEM_Z = PROFILE[-1][0]
 SE_N = 2.5   # super-ellipse exponent (slightly boxy torso)
@@ -57,8 +58,7 @@ def radii_at(z):
 
 def robe_point(theta, z, off=0.0):
     rx, ry = radii_at(z)
-    pleat = 1.0 + 0.016 * math.sin(14 * theta + 0.6) * smoothstep(1.02, 0.55, z) \
-        + 0.006 * math.sin(31 * theta) * smoothstep(0.9, 0.5, z)
+    pleat = 1.0   # flat 2.5D look: clean silhouette, no pleats
     s, c = math.sin(theta), math.cos(theta)
     e = 2.0 / SE_N
     x = rx * math.copysign(abs(s) ** e, s) * pleat
@@ -92,9 +92,11 @@ def build_robe(M, coll):
         for j in range(SEG):
             j1 = (j + 1) % SEG
             f = bm.faces.new((rows[r][j], rows[r][j1], rows[r + 1][j1], rows[r + 1][j]))
-            f.material_index = 1 if r >= len(rows) - 3 else 0
-    ob = bc.bm_to_object("BOB_Robe", bm, coll, [M["robe"], M["robe_inner"]],
+            zc = sum(v.co.z for v in f.verts) / 4
+            f.material_index = 1 if r >= len(rows) - 3 else (2 if zc < 1.02 else 0)
+    ob = bc.bm_to_object("BOB_Robe", bm, coll, [M["robe"], M["robe_inner"], M["skirt"]],
                          subsurf=1, render_subsurf=2)
+    bc.add_outline(ob, 0.028)
     return ob
 
 
@@ -129,6 +131,7 @@ def ribbon(name, path, width, off, thick, mat, coll, samples=120):
     sub = ob.modifiers.new("Subdivision", "SUBSURF")
     sub.levels = 1
     sub.render_levels = 2
+    bc.add_outline(ob, 0.010)
     return ob
 
 
@@ -149,6 +152,7 @@ def band(name, z0, z1, off, thick, mat, coll, SEG=112):
     sub = ob.modifiers.new("Subdivision", "SUBSURF")
     sub.levels = 1
     sub.render_levels = 2
+    bc.add_outline(ob, 0.018)
     return ob
 
 
@@ -161,46 +165,31 @@ def build_collar(M, coll):
     ribbon("BOB_Collar_Inner", path_b, 0.06, 0.005, 0.010, M["trim"], coll)
     ribbon("BOB_Collar_Outer", path_a, 0.065, 0.013, 0.012, M["trim"], coll)
     # the outer flap itself: a slightly raised panel edge under the trim
-    ribbon("BOB_Collar_Flap", path_a[3:], 0.11, 0.006, 0.008, M["robe"], coll)
+    flap = ribbon("BOB_Collar_Flap", path_a[3:], 0.11, 0.006, 0.008, M["robe"], coll)
+    flap.modifiers.remove(flap.modifiers["Outline"])
 
 
-def build_sleeve(side, M, coll):
+def build_arm(side, M, coll):
+    """Reference style: the arm is a single thick ink line from the torso edge."""
     tag = "L" if side > 0 else "R"
     sh, el, wr = (bc.J[f"{n}.{tag}"] for n in ("shoulder", "elbow", "wrist"))
-    start = Vector((0.21 * side, 0.0, 1.60))
-    ctrl = [start, sh, el, wr - (wr - el).normalized() * 0.01]
-    pts, radii = [], []
-    N = 44
+    start = Vector((0.26 * side, 0.0, 1.57))
+    ctrl = [start, sh, el, wr]
+    pts = []
+    N = 40
     for k in range(N + 1):
         u = k / N * 3
         i = min(int(u), 2)
         t = u - i
         P = [ctrl[max(min(j, 3), 0)] for j in (i - 1, i, i + 1, i + 2)]
         pts.append(catmull(P[0], P[1], P[2], P[3], t))
-        s = k / N
-        r = 0.088 - 0.022 * smoothstep(0.1, 0.6, s) + 0.020 * smoothstep(0.75, 1.0, s)
-        r *= 1.0 + 0.035 * math.sin(s * 38) * math.exp(-((s - 0.62) / 0.1) ** 2)
-        radii.append(r)
-    bm = bc.tube_along(pts, radii, rsegs=24)
-    for f in bm.faces:
-        if len(f.verts) == 3:
-            f.material_index = 1
-    ob = bc.bm_to_object(f"BOB_Sleeve_{tag}", bm, coll, [M["robe"], M["robe_inner"]],
-                         subsurf=1, render_subsurf=2)
-    # gold cuff
-    cp, cr = pts[-6:], [r * 1.09 + 0.006 for r in radii[-6:]]
-    bm = bc.tube_along(cp, cr, rsegs=24, caps=False)
-    cuff = bc.bm_to_object(f"BOB_Cuff_{tag}", bm, coll, [M["trim"]], subsurf=1)
-    sol = cuff.modifiers.new("Thickness", "SOLIDIFY")
-    sol.thickness = 0.008
-    sol.offset = 1.0
-    cuff.modifiers.move(1, 0)
-    return ob
+    bm = bc.tube_along(pts, [0.030] * len(pts), rsegs=16)
+    return bc.bm_to_object(f"BOB_Arm_{tag}", bm, coll, [M["outline_ink"]], subsurf=1)
 
 
 def build_sash(M, coll):
-    band("BOB_Sash", 1.035, 1.145, 0.010, 0.014, M["sash"], coll)
-    band("BOB_Hem_Trim", HEM_Z + 0.004, HEM_Z + 0.075, 0.004, 0.010, M["trim"], coll)
+    band("BOB_Sash", 1.00, 1.17, 0.010, 0.014, M["sash"], coll)
+    band("BOB_Hem_Trim", HEM_Z + 0.004, HEM_Z + 0.065, 0.004, 0.010, M["trim"], coll)
     # knot at the front left + two hanging tails
     th = 0.62
     p = robe_point(th, 1.09, 0.03)
@@ -210,7 +199,8 @@ def build_sash(M, coll):
     rot = n.to_track_quat("Z", "Y").to_matrix().to_4x4()
     bmesh.ops.transform(bm, matrix=Matrix.Translation(p) @ rot
                         @ Matrix.Diagonal((0.05, 0.065, 0.03, 1)), verts=bm.verts)
-    bc.bm_to_object("BOB_Sash_Knot", bm, coll, [M["sash"]], subsurf=1)
+    knot = bc.bm_to_object("BOB_Sash_Knot", bm, coll, [M["sash"]], subsurf=1)
+    bc.add_outline(knot, 0.012)
     for k, (dth, ln) in enumerate(((-0.06, 0.30), (0.08, 0.24))):
         path = [(th + dth * 0.3, 1.08), (th + dth * 0.7, 1.0), (th + dth, 1.08 - ln)]
         ribbon(f"BOB_Sash_Tail_{k}", path, 0.06 - 0.008 * k, 0.03 - 0.004 * k, 0.008,
@@ -222,7 +212,7 @@ def build(M):
     build_robe(M, coll)
     build_collar(M, coll)
     for side in (1, -1):
-        build_sleeve(side, M, coll)
+        build_arm(side, M, coll)
     build_sash(M, coll)
 
 

@@ -1,5 +1,34 @@
 # Modeling Decisions — Bob
 
+> **Current look: flat 2.5D** (since the client review "the face is round, not flat, and not
+> 100% white"). The full measurement of the target style is in `style_extraction_2_5d.md`.
+>
+> What changed from the first, fully shaded 3D pass:
+> - **Materials:** every material is now an *unlit painted fill*. Lit and shade colours are
+>   blended by a fixed painted light direction, with a soft rim band on the robe. The set lighting
+>   never changes Bob's colours, just as with a drawn character composited into a 3D set.
+> - **Outlines:** a thick charcoal (#2A2324) inverted-hull outline on the head, hair, robe, sash
+>   and trims. It uses a Backfacing mask, so it works in both EEVEE and Cycles.
+> - **Head:** flattened front to back (depth 0.80) so it reads as a drawn disc. The face colour
+>   is the measured off-white #F6F7F0, with a barely visible warm-grey edge shade.
+> - **Face:** the layered 3D eyes, lids and nose were replaced by **flat charcoal strokes**
+>   (#3A3436) lying on the head surface:
+>   - **Eyes:** dash (default), round with a dot pupil, ^ happy, slanted angry/sad, and a
+>     half-lid "D".
+>   - **Brows and mouth:** stroke shapes, with a small "o" dot as the neutral mouth.
+>   All of these are shape keys driven from `CTRL_face`.
+> - **Hair:** only a navy-black crescent shows above the face. The topknot is now a large domed
+>   cover with thin light stripes and Bob's gold band (the reference's hairpin is not used).
+> - **Body:**
+>   - **Arms and legs:** single ink lines with tiny ink hands.
+>   - **Robe:** a torso column, a yellow sash (#DCA54B), then a slightly wider skirt column.
+>   - **Colours:** the measured blues #264080 / #22397A.
+>   - **Bob's own trims:** the gold crossed collar and gold hem band.
+> - **Rendering:** EEVEE with the *Standard* view transform, so the measured hex colours come out
+>   exactly.
+>
+> The sections below describe the first pass; geometry and rig techniques still apply.
+
 Every piece of Bob is generated procedurally by the scripts in `scripts/`. Rebuilding always gives
 exactly the same character, and any proportion can be changed in one place.
 

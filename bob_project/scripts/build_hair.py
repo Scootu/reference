@@ -19,7 +19,9 @@ def hairline(phi):
     """Normalised height (direction z) of the hairline at azimuth phi (0 = front)."""
     # rounded arc high on the forehead (0.50), down to brow level at the
     # temples (0.15) and low at the nape (-0.35)
-    return 0.1125 + 0.425 * math.cos(phi) - 0.0375 * math.cos(2 * phi)
+    # 2.5D style: only a crescent of hair shows above the face (front 0.74,
+    # temples 0.50, nape 0.05)
+    return 0.4425 + 0.345 * math.cos(phi) - 0.0475 * math.cos(2 * phi)
 
 
 def smoothstep(a, b, x):
@@ -67,31 +69,37 @@ def build_cap(M, coll):
         for loop, co in zip(f.loops, ((i / SEG, 1), ((i + 1) / SEG, 1), ((i + 0.5) / SEG, 1))):
             loop[uv].uv = co
     ob = bc.bm_to_object("BOB_Hair_Cap", bm, coll, [M["hair"]], subsurf=1, render_subsurf=2)
+    bc.add_outline(ob, 0.026)
     return ob
 
 
 def build_bun(M, coll):
-    d = Vector((0.0, 0.30, 0.95)).normalized()
+    d = Vector((0.0, 0.12, 0.99)).normalized()
     base = bc.HEAD_C + bc.head_surface_dir(d) + d * 0.02
     rot = d.to_track_quat("Z", "Y").to_matrix().to_4x4()
 
     bm = bmesh.new()
+    bm.loops.layers.uv.new("UVMap")      # calc_uvs needs an existing UV layer
     bmesh.ops.create_uvsphere(bm, u_segments=48, v_segments=24, radius=1.0, calc_uvs=True)
     for v in bm.verts:
         z = v.co.z
         # slightly pear-shaped knot: narrower towards the scalp
-        k = 1.0 - 0.22 * max(0.0, -z)
-        v.co.x *= 0.155 * k
-        v.co.y *= 0.148 * k
-        v.co.z *= 0.125
-    bmesh.ops.transform(bm, matrix=Matrix.Translation(base + d * 0.10) @ rot, verts=bm.verts)
-    bun = bc.bm_to_object("BOB_Hair_Bun", bm, coll, [M["hair"]], subsurf=1, render_subsurf=2)
+        # domed topknot cover: flat-ish base, tall rounded top
+        k = 1.0 - 0.15 * max(0.0, -z)
+        v.co.x *= 0.235 * k
+        v.co.y *= 0.200 * k
+        v.co.z *= 0.235 if z > 0 else 0.10
+    bmesh.ops.transform(bm, matrix=Matrix.Translation(base + d * 0.06) @ rot, verts=bm.verts)
+    bun = bc.bm_to_object("BOB_Hair_Bun", bm, coll, [M["hair_bun"]], subsurf=1,
+                          render_subsurf=2)
+    bc.add_outline(bun, 0.022)
 
-    band = bc.torus_bm(0.098, 0.020, segs=48, rsegs=12,
+    band = bc.torus_bm(0.200, 0.022, segs=64, rsegs=12,
                        axis_matrix=Matrix.Rotation(math.radians(90), 4, "X"))
-    bmesh.ops.transform(band, matrix=Matrix.Translation(base + d * 0.03) @ rot,
+    bmesh.ops.transform(band, matrix=Matrix.Translation(base + d * 0.035) @ rot,
                         verts=band.verts)
-    bc.bm_to_object("BOB_Hair_Band", band, coll, [M["gold"]], subsurf=1)
+    bnd = bc.bm_to_object("BOB_Hair_Band", band, coll, [M["gold"]], subsurf=1)
+    bc.add_outline(bnd, 0.010)
     return bun
 
 

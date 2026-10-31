@@ -15,29 +15,33 @@ from mathutils.bvhtree import BVHTree
 # ----------------------------------------------------------------------------
 HEAD_R = 0.62                      # base head radius
 HEAD_C = Vector((0.0, 0.0, 2.32))  # head centre (rest pose)
-HEAD_SCALE = Vector((1.03, 0.93, 1.0))
+HEAD_SCALE = Vector((1.04, 0.80, 1.0))   # flattened front-to-back: reads as a drawn disc
 
-# Colours are sRGB (as picked in a colour picker); converted with lin()
+# Colours are sRGB, measured from the reference frames (style_extraction_2_5d.md)
 C = {
-    "skin": (0.965, 0.945, 0.915),
-    "skin_shadow": (0.86, 0.80, 0.78),
-    "hair": (0.035, 0.035, 0.045),
-    "eye_white": (0.98, 0.98, 0.97),
-    "iris": (0.22, 0.14, 0.09),
-    "pupil": (0.015, 0.012, 0.012),
-    "rim": (0.03, 0.025, 0.03),
-    "brow": (0.03, 0.03, 0.035),
-    "mouth": (0.32, 0.06, 0.07),
-    "tongue": (0.85, 0.40, 0.42),
+    "skin": (0.965, 0.969, 0.941),        # #F6F7F0 lit
+    "skin_shade": (0.905, 0.895, 0.870),  # soft grey-warm edge
+    "ink": (0.165, 0.137, 0.141),         # #2A2324 outlines
+    "stroke": (0.227, 0.204, 0.212),      # #3A3436 facial strokes
+    "eye_white": (0.98, 0.98, 0.96),
+    "mouth": (0.227, 0.176, 0.184),
+    "tongue": (0.55, 0.30, 0.32),
     "teeth": (0.97, 0.96, 0.93),
-    "robe": (0.035, 0.13, 0.52),
-    "robe_inner": (0.02, 0.06, 0.25),
-    "trim": (0.98, 0.66, 0.06),
-    "sash": (0.06, 0.09, 0.22),
-    "pants": (0.07, 0.10, 0.22),
-    "shoe": (0.05, 0.045, 0.045),
-    "blush": (1.0, 0.55, 0.55),
+    "hair": (0.118, 0.125, 0.235),        # #1E203C
+    "hair_stripe": (0.55, 0.54, 0.59),    # #8C8A96
+    "robe": (0.149, 0.251, 0.502),        # #264080
+    "robe_shade": (0.114, 0.157, 0.337),  # #1D2856
+    "robe_rim": (0.306, 0.392, 0.576),    # #4E6493
+    "skirt": (0.133, 0.224, 0.478),       # #22397A
+    "skirt_shade": (0.118, 0.196, 0.396),
+    "sash": (0.863, 0.647, 0.294),        # #DCA54B
+    "sash_shade": (0.725, 0.522, 0.184),
+    "trim": (0.93, 0.74, 0.30),
+    "trim_shade": (0.78, 0.58, 0.20),
+    "shoe": (0.17, 0.14, 0.14),
+    "blush": (1.0, 0.70, 0.70),
     "tear": (0.55, 0.80, 1.0),
+    "gold": (0.95, 0.76, 0.32),
 }
 
 COLL = "BOB"
@@ -299,15 +303,12 @@ class Surface:
     """Ray-cast helper onto an object's evaluated mesh (world space)."""
 
     def __init__(self, ob):
-        dg = bpy.context.evaluated_depsgraph_get()
-        ev = ob.evaluated_get(dg)
-        me = ev.to_mesh()
+        # the base mesh, not the evaluated one: the outline hull must not be hit
         bm = bmesh.new()
-        bm.from_mesh(me)
+        bm.from_mesh(ob.data)
         bm.transform(ob.matrix_world)
         self.tree = BVHTree.FromBMesh(bm)
         bm.free()
-        ev.to_mesh_clear()
 
     def front(self, x, z, off=0.0, depth_dir=Vector((0, 1, 0))):
         """Hit the surface from the front (from -Y) at world x/z."""
@@ -374,128 +375,164 @@ def add_bump(nt, bsdf, tex_node, strength=0.1, distance=0.02, output="Fac"):
     return bump
 
 
-def get_materials():
-    """Create (or fetch) every Bob material. Returns dict."""
-    M = {}
+# Fixed "painted" light direction (upper left, slightly in front). The character
+# is unlit like a drawing: colours never change with the set lighting.
+PAINT_LIGHT = Vector((-0.55, -0.45, 0.70)).normalized()
 
-    # Skin: soft off-white, light subsurface, subtle darker edge for a graphic read
-    mat, nt, b = principled("BOB_Skin", C["skin"], rough=0.48, sss=0.15,
-                            sss_radius=(0.6, 0.3, 0.2), spec=0.35)
-    lw = nt.nodes.new("ShaderNodeLayerWeight")
-    lw.inputs["Blend"].default_value = 0.18
-    lw.location = (-500, 150)
-    ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.location = (-300, 150)
-    ramp.color_ramp.elements[0].position = 0.55
-    ramp.color_ramp.elements[0].color = (*lin(C["skin"]), 1)
-    ramp.color_ramp.elements[1].position = 1.0
-    ramp.color_ramp.elements[1].color = (*lin(C["skin_shadow"]), 1)
-    nt.links.new(lw.outputs["Facing"], ramp.inputs["Fac"])
-    nt.links.new(ramp.outputs["Color"], b.inputs["Base Color"])
-    M["skin"] = mat
 
-    # Hair: deep near-black, controlled spec, fine comb-line bump along U
-    mat, nt, b = principled("BOB_Hair", C["hair"], rough=0.42, spec=0.32, coat=0.0)
-    tc = nt.nodes.new("ShaderNodeTexCoord")
-    tc.location = (-800, -300)
-    wave = nt.nodes.new("ShaderNodeTexWave")
-    wave.location = (-550, -300)
-    wave.wave_type = "BANDS"
-    wave.bands_direction = "X"
-    wave.inputs["Scale"].default_value = 110.0
-    wave.inputs["Distortion"].default_value = 3.0
-    wave.inputs["Detail"].default_value = 2.0
-    wave.inputs["Detail Scale"].default_value = 0.6
-    nt.links.new(tc.outputs["UV"], wave.inputs["Vector"])
-    add_bump(nt, b, wave, strength=0.07, distance=0.003)
-    M["hair"] = mat
+def flat_mat(name, lit, shade=None, rim=None, rim_width=0.22, softness=0.35, alpha=1.0):
+    """Unlit 2.5D fill: lit/shade colours blended by a fixed painted light direction,
+    plus an optional soft rim band on the lit side (as on the reference robe)."""
+    mat = bpy.data.materials.get(name)
+    if mat:
+        bpy.data.materials.remove(mat)
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    col_socket = None
+    if shade is None:
+        em.inputs["Color"].default_value = (*lin(lit), 1)
+    else:
+        geo = nt.nodes.new("ShaderNodeNewGeometry")
+        dot = nt.nodes.new("ShaderNodeVectorMath")
+        dot.operation = "DOT_PRODUCT"
+        dot.inputs[1].default_value = PAINT_LIGHT
+        ramp = nt.nodes.new("ShaderNodeValToRGB")
+        e = ramp.color_ramp.elements
+        e[0].position = 0.5 - softness * 0.5
+        e[0].color = (*lin(shade), 1)
+        e[1].position = 0.5 + softness * 0.5
+        e[1].color = (*lin(lit), 1)
+        mr = nt.nodes.new("ShaderNodeMapRange")
+        mr.inputs["From Min"].default_value = -1.0
+        mr.inputs["From Max"].default_value = 1.0
+        nt.links.new(geo.outputs["Normal"], dot.inputs[0])
+        nt.links.new(dot.outputs["Value"], mr.inputs["Value"])
+        nt.links.new(mr.outputs["Result"], ramp.inputs["Fac"])
+        col_socket = ramp.outputs["Color"]
+        if rim:
+            lw = nt.nodes.new("ShaderNodeLayerWeight")
+            lw.inputs["Blend"].default_value = 0.5
+            rr = nt.nodes.new("ShaderNodeValToRGB")
+            rr.color_ramp.elements[0].position = 1.0 - rim_width - 0.06
+            rr.color_ramp.elements[0].color = (0, 0, 0, 1)
+            rr.color_ramp.elements[1].position = 1.0 - rim_width
+            rr.color_ramp.elements[1].color = (1, 1, 1, 1)
+            side = nt.nodes.new("ShaderNodeMath")
+            side.operation = "MULTIPLY"
+            lit_side = nt.nodes.new("ShaderNodeMath")
+            lit_side.operation = "GREATER_THAN"
+            lit_side.inputs[1].default_value = 0.52
+            mix = nt.nodes.new("ShaderNodeMix")
+            mix.data_type = "RGBA"
+            mix.inputs["B"].default_value = (*lin(rim), 1)
+            nt.links.new(lw.outputs["Facing"], rr.inputs["Fac"])
+            nt.links.new(mr.outputs["Result"], lit_side.inputs[0])
+            nt.links.new(rr.outputs["Color"], side.inputs[0])
+            nt.links.new(lit_side.outputs[0], side.inputs[1])
+            nt.links.new(side.outputs[0], mix.inputs["Factor"])
+            nt.links.new(ramp.outputs["Color"], mix.inputs["A"])
+            col_socket = mix.outputs["Result"]
+        nt.links.new(col_socket, em.inputs["Color"])
+    shader_out = em.outputs[0]
+    if alpha < 1.0:
+        tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+        mx = nt.nodes.new("ShaderNodeMixShader")
+        mx.inputs[0].default_value = alpha
+        nt.links.new(tr.outputs[0], mx.inputs[1])
+        nt.links.new(em.outputs[0], mx.inputs[2])
+        shader_out = mx.outputs[0]
+    nt.links.new(shader_out, out.inputs["Surface"])
+    mat.diffuse_color = (*lin(lit), 1)
+    return mat
 
-    M["eye_white"] = principled("BOB_EyeWhite", C["eye_white"], rough=0.25, coat=0.6,
-                                sss=0.05)[0]
-    mat, nt, b = principled("BOB_Iris", C["iris"], rough=0.3, coat=0.8)
-    # radial gradient: lighter towards the outer iris
-    M["iris"] = mat
-    M["pupil"] = principled("BOB_Pupil", C["pupil"], rough=0.15, coat=1.0)[0]
-    M["rim"] = principled("BOB_EyeRim", C["rim"], rough=0.6, spec=0.2)[0]
-    M["brow"] = principled("BOB_Brow", C["brow"], rough=0.55, spec=0.25)[0]
-    hl, nt, b = principled("BOB_EyeHighlight", (1, 1, 1), rough=0.2,
-                           emission=(1, 1, 1), emission_strength=3.0)
-    M["highlight"] = hl
 
-    # Mouth interior with darker edges (UV v runs across the mouth)
-    mat, nt, b = principled("BOB_Mouth", C["mouth"], rough=0.45, spec=0.3)
-    tc = nt.nodes.new("ShaderNodeTexCoord")
-    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
-    mth = nt.nodes.new("ShaderNodeMath")
-    mth.operation = "PINGPONG"
-    mth.inputs[1].default_value = 0.5
-    ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].position = 0.0
-    ramp.color_ramp.elements[0].color = (*lin((0.05, 0.01, 0.015)), 1)
-    ramp.color_ramp.elements[1].position = 0.22
-    ramp.color_ramp.elements[1].color = (*lin(C["mouth"]), 1)
-    nt.links.new(tc.outputs["UV"], sep.inputs[0])
-    nt.links.new(sep.outputs["Y"], mth.inputs[0])
-    nt.links.new(mth.outputs[0], ramp.inputs["Fac"])
-    nt.links.new(ramp.outputs["Color"], b.inputs["Base Color"])
-    M["mouth"] = mat
-    M["teeth"] = principled("BOB_Teeth", C["teeth"], rough=0.3, coat=0.3)[0]
-    M["tongue"] = principled("BOB_Tongue", C["tongue"], rough=0.4, sss=0.2)[0]
-
-    # Cloth: rich blue, fabric sheen + subtle weave
-    def cloth(name, color, sheen=0.6, scale=900.0, strength=0.06):
-        mat, nt, b = principled(name, color, rough=0.78, sheen=sheen, spec=0.3)
-        _set(b, "Sheen Tint", (0.75, 0.85, 1.0, 1.0))
-        tc = nt.nodes.new("ShaderNodeTexCoord")
-        tc.location = (-900, -300)
-        mapping = nt.nodes.new("ShaderNodeMapping")
-        mapping.location = (-700, -300)
-        mapping.inputs["Scale"].default_value = (1.0, 1.0, 1.0)
-        w1 = nt.nodes.new("ShaderNodeTexWave")
-        w1.location = (-500, -250)
-        w1.bands_direction = "X"
-        w1.inputs["Scale"].default_value = scale
-        w2 = nt.nodes.new("ShaderNodeTexWave")
-        w2.location = (-500, -450)
-        w2.bands_direction = "Z"
-        w2.inputs["Scale"].default_value = scale
-        mix = nt.nodes.new("ShaderNodeMath")
-        mix.operation = "MULTIPLY"
-        noise = nt.nodes.new("ShaderNodeTexNoise")
-        noise.inputs["Scale"].default_value = 18.0
-        add = nt.nodes.new("ShaderNodeMath")
-        add.operation = "MULTIPLY_ADD"
-        add.inputs[1].default_value = 0.6
-        nt.links.new(tc.outputs["Object"], mapping.inputs["Vector"])
-        nt.links.new(mapping.outputs["Vector"], w1.inputs["Vector"])
-        nt.links.new(mapping.outputs["Vector"], w2.inputs["Vector"])
-        nt.links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
-        nt.links.new(w1.outputs["Fac"], mix.inputs[0])
-        nt.links.new(w2.outputs["Fac"], mix.inputs[1])
-        nt.links.new(mix.outputs[0], add.inputs[0])
-        nt.links.new(noise.outputs["Fac"], add.inputs[2])
-        bump = nt.nodes.new("ShaderNodeBump")
-        bump.inputs["Strength"].default_value = strength
-        if "Distance" in bump.inputs:
-            bump.inputs["Distance"].default_value = 0.003
-        nt.links.new(add.outputs[0], bump.inputs["Height"])
-        nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
+def outline_material():
+    """Inverted-hull outline: charcoal where the (flipped) hull faces the camera from
+    behind the object, transparent elsewhere. Works in Cycles and EEVEE."""
+    name = "BOB_Outline"
+    mat = bpy.data.materials.get(name)
+    if mat:
         return mat
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    em = nt.nodes.new("ShaderNodeEmission")
+    em.inputs["Color"].default_value = (*lin(C["ink"]), 1)
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mx = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(geo.outputs["Backfacing"], mx.inputs[0])
+    nt.links.new(em.outputs[0], mx.inputs[1])
+    nt.links.new(tr.outputs[0], mx.inputs[2])
+    nt.links.new(mx.outputs[0], out.inputs["Surface"])
+    mat.diffuse_color = (*lin(C["ink"]), 1)
+    return mat
 
-    M["robe"] = cloth("BOB_Robe", C["robe"])
-    M["robe_inner"] = cloth("BOB_RobeInner", C["robe_inner"], 0.3)
-    M["sash"] = cloth("BOB_Sash", C["sash"], 0.5)
-    M["pants"] = cloth("BOB_Pants", C["pants"], 0.4)
-    mat, nt, b = principled("BOB_Trim", C["trim"], rough=0.38, sheen=0.4, spec=0.6, coat=0.2)
-    M["trim"] = mat
-    M["shoe"] = principled("BOB_Shoe", C["shoe"], rough=0.35, coat=0.4)[0]
-    M["gold"] = principled("BOB_Gold", (1.0, 0.78, 0.35), rough=0.25, spec=0.8)[0]
-    _set(bpy.data.materials["BOB_Gold"].node_tree.nodes["Principled BSDF"], "Metallic", 1.0)
-    M["blush"] = principled("BOB_Blush", C["blush"], rough=0.5, alpha=0.55)[0]
-    M["tear"] = principled("BOB_Tear", C["tear"], rough=0.05, coat=1.0, alpha=0.75)[0]
-    for k in ("blush", "tear"):
-        try:
-            M[k].blend_method = "BLEND"
-        except Exception:
-            pass
+
+def add_outline(ob, thickness=0.026):
+    mat = outline_material()
+    if mat.name not in ob.data.materials:
+        ob.data.materials.append(mat)
+    idx = list(ob.data.materials).index(mat)
+    mod = ob.modifiers.new("Outline", "SOLIDIFY")
+    mod.thickness = thickness
+    mod.offset = 1.0
+    mod.use_flip_normals = True
+    mod.use_rim = False
+    mod.use_even_offset = True
+    mod.material_offset = idx
+    mod.material_offset_rim = idx
+    return mod
+
+
+def get_materials():
+    """Create (or fetch) every Bob material for the flat 2.5D look. Returns dict."""
+    M = {}
+    M["skin"] = flat_mat("BOB_Skin", C["skin"], C["skin_shade"], softness=0.55)
+    M["ink"] = flat_mat("BOB_Ink", C["stroke"])
+    M["outline_ink"] = flat_mat("BOB_LineInk", C["ink"])
+    M["eye_white"] = flat_mat("BOB_EyeWhite", C["eye_white"])
+    M["mouth"] = flat_mat("BOB_Mouth", C["mouth"])
+    M["teeth"] = flat_mat("BOB_Teeth", C["teeth"])
+    M["tongue"] = flat_mat("BOB_Tongue", C["tongue"])
+
+    M["hair"] = flat_mat("BOB_Hair", C["hair"])
+    # topknot cover: navy-black with thin light vertical stripes along UV U
+    mat = flat_mat("BOB_HairBun", C["hair"])
+    nt = mat.node_tree
+    em = next(n for n in nt.nodes if n.type == "EMISSION")
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    wave = nt.nodes.new("ShaderNodeTexWave")
+    wave.bands_direction = "X"
+    wave.wave_profile = "SIN"
+    wave.inputs["Scale"].default_value = 9.0
+    nt.links.new(tc.outputs["UV"], wave.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].position = 0.84
+    ramp.color_ramp.elements[0].color = (*lin(C["hair"]), 1)
+    ramp.color_ramp.elements[1].position = 0.97
+    ramp.color_ramp.elements[1].color = (*lin(C["hair_stripe"]), 1)
+    nt.links.new(wave.outputs["Fac"], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], em.inputs["Color"])
+    M["hair_bun"] = mat
+
+    M["robe"] = flat_mat("BOB_Robe", C["robe"], C["robe_shade"], rim=C["robe_rim"])
+    M["skirt"] = flat_mat("BOB_Skirt", C["skirt"], C["skirt_shade"], rim=C["robe_rim"],
+                          rim_width=0.15)
+    M["robe_inner"] = flat_mat("BOB_RobeInner", C["robe_shade"])
+    M["sash"] = flat_mat("BOB_Sash", C["sash"], C["sash_shade"])
+    M["trim"] = flat_mat("BOB_Trim", C["trim"], C["trim_shade"])
+    M["gold"] = flat_mat("BOB_Gold", C["gold"], C["trim_shade"])
+    M["shoe"] = flat_mat("BOB_Shoe", C["shoe"])
+    M["blush"] = flat_mat("BOB_Blush", C["blush"], alpha=0.45)
+    M["tear"] = flat_mat("BOB_Tear", C["tear"], (0.40, 0.66, 0.92))
+    M["outline"] = outline_material()
+    # aliases used by older build stages
+    M["pants"] = M["outline_ink"]
     return M

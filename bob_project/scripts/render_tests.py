@@ -31,8 +31,32 @@ FOCUS_BODY = Vector((0, 0, 1.50))
 # Render settings
 # ----------------------------------------------------------------------------
 
+ENGINE = "EEVEE"   # the flat 2.5D character is unlit; EEVEE renders it fast and exact
+
+
 def setup_cycles(samples=96, res=(1600, 1600), percent=100):
     scn = bpy.context.scene
+    if ENGINE == "EEVEE":
+        for eng in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
+            try:
+                scn.render.engine = eng
+                break
+            except TypeError:
+                continue
+        ee = scn.eevee
+        ee.taa_render_samples = max(16, min(samples, 64))
+        for attr, val in (("use_shadows", True), ("use_raytracing", True),
+                          ("use_gtao", True), ("shadow_ray_count", 2)):
+            if hasattr(ee, attr):
+                setattr(ee, attr, val)
+        scn.render.resolution_x, scn.render.resolution_y = res
+        scn.render.resolution_percentage = percent
+        scn.render.film_transparent = False
+        scn.render.filter_size = 1.2
+        scn.view_settings.view_transform = "Standard"
+        scn.view_settings.look = "None"
+        scn.render.image_settings.file_format = "PNG"
+        return
     scn.render.engine = "CYCLES"
     cy = scn.cycles
     cy.device = "CPU"
@@ -57,8 +81,8 @@ def setup_cycles(samples=96, res=(1600, 1600), percent=100):
     scn.render.film_transparent = False
     scn.render.filter_size = 1.5
     try:
-        scn.view_settings.view_transform = "AgX"
-        scn.view_settings.look = "AgX - Medium High Contrast"
+        scn.view_settings.view_transform = "Standard"
+        scn.view_settings.look = "None"
     except TypeError:
         scn.view_settings.view_transform = "Filmic"
     scn.render.image_settings.file_format = "PNG"
@@ -154,10 +178,10 @@ def build_studio():
     mat, nt, b = bc.principled("ENV_Cyc", (0.58, 0.60, 0.64), rough=0.85, spec=0.2)
     ob = bc.bm_to_object("ENV_Cyclorama", bm, coll, [mat])
     # three-point lighting
-    area_light(coll, "ENV_Key", (-3.2, -4.0, 4.4), (0, 0, 1.9), 900, 2.6, (1.0, 0.95, 0.88))
-    area_light(coll, "ENV_Fill", (3.6, -3.4, 2.0), (0, 0, 1.6), 260, 3.5, (0.85, 0.9, 1.0))
-    area_light(coll, "ENV_Rim", (2.0, 3.5, 4.0), (0, 0, 2.1), 750, 1.6, (0.9, 0.95, 1.0))
-    area_light(coll, "ENV_RimL", (-2.6, 3.0, 2.8), (0, 0, 1.6), 380, 1.4, (1.0, 0.9, 0.8))
+    area_light(coll, "ENV_Key", (-3.2, -4.0, 4.4), (0, 0, 1.9), 380, 4.0, (1.0, 0.95, 0.88))
+    area_light(coll, "ENV_Fill", (3.6, -3.4, 2.0), (0, 0, 1.6), 140, 4.0, (0.85, 0.9, 1.0))
+    area_light(coll, "ENV_Rim", (2.0, 3.5, 4.0), (0, 0, 2.1), 300, 2.0, (0.9, 0.95, 1.0))
+    area_light(coll, "ENV_RimL", (-2.6, 3.0, 2.8), (0, 0, 1.6), 160, 2.0, (1.0, 0.9, 0.8))
     world((0.62, 0.66, 0.72), 0.35)
     return coll
 
@@ -439,7 +463,7 @@ def do_fullbody(samples):
 
 def do_expressions(samples):
     import build_expressions as be
-    setup_cycles(samples, (720, 720))
+    setup_cycles(samples, (540, 540))
     set_env_visible("ENV_Studio")
     paths = []
     for i, name in enumerate(be.EXPRESSION_ORDER):

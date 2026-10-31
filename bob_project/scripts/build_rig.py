@@ -3,8 +3,8 @@
 Body:   root > hips > spine > chest > neck > head
         chest > clavicle.L/R > upper_arm > forearm > hand        (FK, IK via hand_ik.*)
         hips > thigh.L/R > shin > foot                              (IK via foot_ik.*)
-Face:   head > eye.L/R (look), lid_up.L/R + lid_low.L/R (blink / lid shapes),
-        brow.L/R (move / tilt), CTRL_face (all facial sliders live here)
+Face:   head > CTRL_face. All facial sliders live on CTRL_face and drive the shape keys
+        of the flat drawn eyes, brows and mouth (2.5D style).
 Switches (custom props on the BOB_Rig object):
         arm_ik_L / arm_ik_R   0 = FK, 1 = IK          leg_ik_L / leg_ik_R  (default 1)
 
@@ -22,11 +22,11 @@ FACE_PROPS = {
     # name: (default, min, max, description)
     "blink_L": (0.0, 0, 1, "Close Bob's left eye"),
     "blink_R": (0.0, 0, 1, "Close Bob's right eye"),
-    "lids_sleepy": (0.0, 0, 1, "Upper lids half closed (bored / tired)"),
-    "lids_happy": (0.0, 0, 1, "Lower lids push up (smiling eyes)"),
-    "lids_angry": (0.0, 0, 1, "Upper lids slant down towards the nose"),
-    "lids_sad": (0.0, 0, 1, "Upper lids slant down towards the outside"),
-    "lids_wide": (0.0, 0, 1, "Eyes wide open"),
+    "lids_sleepy": (0.0, 0, 1, "Half-lid smug eyes (flat lid line + half pupil)"),
+    "lids_happy": (0.0, 0, 1, "Happy ^ arc eyes"),
+    "lids_angry": (0.0, 0, 1, "Angry slanted dash eyes"),
+    "lids_sad": (0.0, 0, 1, "Sad slanted dash eyes"),
+    "lids_wide": (0.0, 0, 1, "Round surprised eyes (ring + dot pupil)"),
     "look_x": (0.0, -1, 1, "Both eyes look left/right (+ = Bob's left)"),
     "look_y": (0.0, -1, 1, "Both eyes look down/up"),
     "eye_L_x": (0.0, -1, 1, "Left eye only, left/right"),
@@ -134,20 +134,6 @@ def build_armature(coll):
         bone(f"knee_pole.{s}", J[f"knee.{s}"] + Vector((0, -0.8, 0)),
              J[f"knee.{s}"] + Vector((0, -0.9, 0)), "root")
 
-    # face bones from the face geometry frames
-    for s in "LR":
-        white = bpy.data.objects[f"BOB_Eye_{s}_White"]
-        m = white.matrix_world
-        c = m.translation
-        fwd = -Vector(m.col[1][:3]).normalized()
-        up = Vector(m.col[2][:3])
-        for name in (f"eye.{s}", f"lid_up.{s}", f"lid_low.{s}"):
-            bone(name, c, c + fwd * 0.16, "head", roll_up=up)
-        brow = bpy.data.objects[f"BOB_Brow_{s}"]
-        bm_ = brow.matrix_world
-        bc_ = bm_.translation
-        bfwd = -Vector(bm_.col[1][:3]).normalized()
-        bone(f"brow.{s}", bc_, bc_ + bfwd * 0.08, "head", roll_up=Vector(bm_.col[2][:3]))
     hc = bc.HEAD_C
     bone("CTRL_face", hc + Vector((0, -0.95, 0.75)), hc + Vector((0, -0.95, 0.88)), "head")
     for b in eb:
@@ -164,8 +150,7 @@ def bone_collections(rig):
         "Arms FK": [f"{b}.{s}" for s in "LR" for b in ("upper_arm", "forearm", "hand")],
         "IK Controls": [f"{b}.{s}" for s in "LR" for b in ("hand_ik", "elbow_pole", "foot_ik",
                                                           "knee_pole")],
-        "Face": ["CTRL_face"] + [f"{b}.{s}" for s in "LR" for b in ("eye", "lid_up", "lid_low",
-                                                                     "brow")],
+        "Face": ["CTRL_face"],
     }
     for gname, names in groups.items():
         bcoll = arm.collections.get(gname) or arm.collections.new(gname)
@@ -349,22 +334,16 @@ def skin_all(rig):
         skin(O[name], rig, torso, robe_mask)
     for s in "LR":
         arm_b = [f"clavicle.{s}", f"upper_arm.{s}", f"forearm.{s}", f"hand.{s}"]
-        for name in (f"BOB_Sleeve_{s}", f"BOB_Cuff_{s}"):
-            skin(O[name], rig, arm_b, power=6.0)
+        skin(O[f"BOB_Arm_{s}"], rig, arm_b, power=6.0)
         skin(O[f"BOB_Leg_{s}"], rig, ["hips", f"thigh.{s}", f"shin.{s}"],
              lambda b, p: 0.3 if b == "hips" else 1.0, power=6.0)
         parent_to_bone(O[f"BOB_Shoe_{s}"], rig, f"foot.{s}")
         parent_to_bone(O[f"BOB_Hand_{s}"], rig, f"hand.{s}")
-        parent_to_bone(O[f"BOB_Eye_{s}_Iris"], rig, f"eye.{s}")
-        parent_to_bone(O[f"BOB_Eye_{s}_LidUp"], rig, f"lid_up.{s}")
-        parent_to_bone(O[f"BOB_Eye_{s}_LidLow"], rig, f"lid_low.{s}")
-        parent_to_bone(O[f"BOB_Brow_{s}"], rig, f"brow.{s}")
     skin(O["BOB_Neck"], rig, ["chest", "neck", "head"])
-    rigid_head = [o for o in O if o.name.startswith(("BOB_Head", "BOB_Hair", "BOB_Nose",
-                                                      "BOB_Mouth", "BOB_Teeth", "BOB_Tongue",
-                                                      "BOB_Blush", "BOB_Tear", "BOB_Sweat"))
-                  or (o.name.startswith("BOB_Eye_") and o.name.endswith(("_White", "_Rim",
-                                                                         "_Highlight")))]
+    rigid_head = [o for o in O if o.name.startswith(("BOB_Head", "BOB_Hair", "BOB_Eye",
+                                                      "BOB_Brow", "BOB_Mouth", "BOB_Teeth",
+                                                      "BOB_Tongue", "BOB_Blush", "BOB_Tear",
+                                                      "BOB_Sweat"))]
     for o in rigid_head:
         if o.parent is None and o.type == "MESH":
             parent_to_bone(o, rig, "head")
@@ -389,28 +368,6 @@ def face_drivers(rig):
         pb.rotation_mode = "XYZ"
         prop_driver(rig, f'pose.bones["{bone}"].{path}', rig, {k: P(k) for k in props}, expr, idx)
 
-    for s, sgn in (("L", 1), ("R", -1)):
-        # eyes: local X = up/down, local Z = left/right
-        bone_drv(f"eye.{s}", "rotation_euler", 0, ["look_y", f"eye_{s}_y"],
-                 f"0.40*(look_y + eye_{s}_y)")
-        bone_drv(f"eye.{s}", "rotation_euler", 2, ["look_x", f"eye_{s}_x"],
-                 f"0.48*(look_x + eye_{s}_x)")
-        bl = f"blink_{s}"
-        bone_drv(f"lid_up.{s}", "rotation_euler", 0,
-                 [bl, "lids_sleepy", "lids_angry", "lids_sad", "lids_wide", "look_y"],
-                 f"-min(2.08, 2.08*{bl} + 0.78*lids_sleepy + 0.52*lids_angry + 0.38*lids_sad)"
-                 f" + 0.22*lids_wide + 0.12*look_y")
-        bone_drv(f"lid_up.{s}", "rotation_euler", 1, ["lids_angry", "lids_sad", bl],
-                 f"{0.40 * sgn}*(lids_angry - lids_sad)*(1 - {bl})")
-        bone_drv(f"lid_low.{s}", "rotation_euler", 0, ["lids_happy", bl, "lids_angry", "lids_wide"],
-                 f"0.62*lids_happy + 0.22*{bl} + 0.18*lids_angry - 0.12*lids_wide")
-        # brows: local Z = up, rotation Y = tilt, local X = towards the centre line
-        bone_drv(f"brow.{s}", "location", 2, [f"brow_{s}_up", "lids_wide"],
-                 f"0.07*brow_{s}_up + 0.025*lids_wide")
-        bone_drv(f"brow.{s}", "location", 0, ["brow_squeeze"], f"{0.022 * sgn}*brow_squeeze")
-        bone_drv(f"brow.{s}", "rotation_euler", 1, [f"brow_{s}_tilt"],
-                 f"{0.42 * sgn}*brow_{s}_tilt")
-
     def key_drv(obname, key, props, expr):
         ob = bpy.data.objects[obname]
         kb = ob.data.shape_keys.key_blocks[key]
@@ -418,8 +375,27 @@ def face_drivers(rig):
         prop_driver(kb, "value", rig, {k: P(k) for k in props}, expr)
 
     for s in "LR":
-        key_drv(f"BOB_Brow_{s}", "Arch", [f"brow_{s}_arch"], f"max(0, brow_{s}_arch)")
-        key_drv(f"BOB_Brow_{s}", "Flat", [f"brow_{s}_arch"], f"max(0, -brow_{s}_arch)")
+        b, w = f"blink_{s}", "lids_wide"
+        eye = f"BOB_Eye_{s}"
+        key_drv(eye, "Closed", [b, w], f"{b}*(1 - {w})")
+        for key, p in (("Happy", "lids_happy"), ("Angry", "lids_angry"), ("Sad", "lids_sad"),
+                       ("Smug", "lids_sleepy")):
+            key_drv(eye, key, [p, b, w], f"{p}*(1 - {b})*(1 - {w})")
+        key_drv(eye, "Hide", [w], w)
+        key_drv(eye, "LookX", ["look_x", f"eye_{s}_x", w], f"(look_x + eye_{s}_x)*(1 - {w})")
+        key_drv(eye, "LookY", ["look_y", f"eye_{s}_y", w], f"(look_y + eye_{s}_y)*(1 - {w})")
+        for part in ("EyeRing", "EyeWhite", "EyePupil"):
+            key_drv(f"BOB_{part}_{s}", "Show", [w, b], f"{w}*(1 - {b})")
+        key_drv(f"BOB_EyePupil_{s}", "LookX", ["look_x", f"eye_{s}_x"], f"look_x + eye_{s}_x")
+        key_drv(f"BOB_EyePupil_{s}", "LookY", ["look_y", f"eye_{s}_y"], f"look_y + eye_{s}_y")
+        br = f"BOB_Brow_{s}"
+        key_drv(br, "Up", [f"brow_{s}_up", w], f"min(1, max(0, brow_{s}_up) + 0.6*{w})")
+        key_drv(br, "Down", [f"brow_{s}_up"], f"max(0, -brow_{s}_up)")
+        key_drv(br, "Angry", [f"brow_{s}_tilt"], f"max(0, brow_{s}_tilt)")
+        key_drv(br, "Worried", [f"brow_{s}_tilt"], f"max(0, -brow_{s}_tilt)")
+        key_drv(br, "Arch", [f"brow_{s}_arch"], f"max(0, brow_{s}_arch)")
+        key_drv(br, "Flat", [f"brow_{s}_arch"], f"max(0, -brow_{s}_arch)")
+        key_drv(br, "Squeeze", ["brow_squeeze"], "brow_squeeze")
         for k, p in (("Relax", "relax"), ("Fist", "fist"), ("Point", "point")):
             key_drv(f"BOB_Hand_{s}", k, [f"hand_{s}_{p}"], f"hand_{s}_{p}")
         key_drv(f"BOB_Blush_{s}", "Show", ["blush"], "blush")

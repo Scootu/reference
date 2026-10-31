@@ -6,7 +6,7 @@ Armature object: **`BOB_Rig`** (bone collections: Body, Arms FK, IK Controls, Fa
 
 ```
 root
-└─ hips ─ spine ─ chest ─ neck ─ head ─ (eye / lid_up / lid_low / brow .L/.R, CTRL_face)
+└─ hips ─ spine ─ chest ─ neck ─ head ─ CTRL_face
    │                └─ clavicle.L/R ─ upper_arm ─ forearm ─ hand
    └─ thigh.L/R ─ shin ─ foot
 controls (children of root): hand_ik.L/R, elbow_pole.L/R, foot_ik.L/R, knee_pole.L/R
@@ -38,14 +38,11 @@ rest pose. The measured error was below 0.5 mm.
 - **Robe, collar, sash and hem:** weighted to hips, spine, chest, clavicles and thighs. Thighs
   only influence below the waist, and clavicles only the shoulder area, so leg poses swing the
   skirt without dragging the chest.
-- **Sleeves and cuffs:** clavicle, upper_arm, forearm, hand. Weights come from distance to each
-  bone with a power-6 falloff and the top 2 bones per vertex, giving smooth elbow bends.
+- **Ink-line arms:** clavicle, upper_arm, forearm, hand. Weights come from distance to each bone
+  with a power-6 falloff and the top 2 bones per vertex, giving smooth elbow bends.
 - **Legs:** hips / thigh / shin.
 - **Rigid parts (bone-parented):**
-  - head bone: head, hair, nose, mouth layers, eyeballs, rims, highlights
-  - `eye.*`: iris and pupil
-  - `lid_*`: lids
-  - `brow.*`: brows
+  - head bone: head, hair, and every drawn facial stroke
   - `hand.*`: hands
   - `foot.*`: shoes
 
@@ -57,10 +54,10 @@ can be keyframed.
 
 | Group | Sliders | Implementation |
 |---|---|---|
-| Blink | `blink_L`, `blink_R` | `lid_up` bone rotation (lower lid rises slightly) |
-| Lid shapes | `lids_sleepy`, `lids_happy`, `lids_angry`, `lids_sad`, `lids_wide` | lid bone rotation and roll |
-| Eye direction | `look_x`, `look_y` (both eyes), `eye_L_x/y`, `eye_R_x/y` (per eye) | `eye.*` bone rotation |
-| Brows | `brow_L/R_up`, `brow_L/R_tilt` (+ angry, − worried), `brow_L/R_arch`, `brow_squeeze` | brow bones + `Arch`/`Flat` shape keys |
+| Eye shape | default = deadpan **dash**. `lids_wide` = **round** eye (ring + dot pupil); `lids_happy` = ^ arcs; `lids_angry` / `lids_sad` = slanted dashes; `lids_sleepy` = half-lid **"D"** (smug) | shape keys on the stroke eyes |
+| Blink | `blink_L`, `blink_R` | `Closed` key (and hides the round eye) |
+| Eye direction | `look_x`, `look_y` (both), `eye_L_x/y`, `eye_R_x/y` (per eye) | shifts the dash or the pupil |
+| Brows | `brow_L/R_up` (±), `brow_L/R_tilt` (+ angry, − worried), `brow_L/R_arch` (±), `brow_squeeze` | brow stroke shape keys |
 | Mouth | `mouth_smile`, `mouth_frown`, `mouth_open`, `mouth_wide`, `mouth_narrow`, `mouth_smirk` (±), `mouth_grin`, `mouth_cry` | shape keys on mouth, teeth and tongue |
 | Visemes | `vis_A`, `vis_E`, `vis_O`, `vis_U`, `vis_MBP`, `vis_FV` | shape keys (for lip-sync) |
 | Extras | `blush`, `tears`, `sweat` | shape keys (grow from nothing) |

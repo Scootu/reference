@@ -69,7 +69,7 @@ def build_hand(side, M, coll):
     d = (tip - wrist).normalized()
     rot = Vector((0, 0, -1)).rotation_difference(d).to_matrix().to_4x4()
     frame = Matrix.Translation(wrist) @ rot
-    ob = bc.bm_to_object(f"BOB_Hand_{tag}", bm, coll, [M["skin"]])
+    ob = bc.bm_to_object(f"BOB_Hand_{tag}", bm, coll, [M["outline_ink"]])
     ob.matrix_world = frame
     me = ob.data
     base = [v.co.copy() for v in me.vertices]
@@ -81,7 +81,7 @@ def build_hand(side, M, coll):
         for i, co in enumerate(base):
             kb.data[i].co = curl_coords(co, side, amounts, thumb)
     # scale the finished hand (and every shape key) up around the wrist
-    HAND_SCALE = 1.32
+    HAND_SCALE = 1.05
     for kb in ob.data.shape_keys.key_blocks:
         for d in kb.data:
             d.co = d.co * HAND_SCALE
@@ -107,22 +107,22 @@ def build(M):
             for i in range(12):
                 t = i / 12
                 pts.append(a.lerp(b, t))
-                radii.append(0.062 - 0.008 * (seg + t) / 2)
+                radii.append(0.030)
         pts.append(ankle + Vector((0, 0, -0.02)))
-        radii.append(0.05)
+        radii.append(0.030)
         bm = bc.tube_along(pts, radii, rsegs=20)
-        bc.bm_to_object(f"BOB_Leg_{tag}", bm, coll, [M["pants"]], subsurf=1)
+        bc.bm_to_object(f"BOB_Leg_{tag}", bm, coll, [M["outline_ink"]], subsurf=1)
         # shoe: rounded, slightly upturned toe, flat sole
         bm = bmesh.new()
         bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=20, radius=1.0)
         for v in bm.verts:
             x, y, z = v.co
             front = max(0.0, -y)
-            v.co = Vector((x * (0.078 + 0.012 * front), y * 0.155, z * 0.062))
+            v.co = Vector((x * (0.060 + 0.010 * front), y * 0.115, z * 0.050))
             if v.co.z < -0.035:
                 v.co.z = -0.035 - (v.co.z + 0.035) * 0.15
             v.co.z += 0.02 * front ** 3
-        bmesh.ops.translate(bm, vec=Vector((bc.J[f"ankle.{tag}"].x, -0.055, 0.052)),
+        bmesh.ops.translate(bm, vec=Vector((bc.J[f"ankle.{tag}"].x, -0.045, 0.045)),
                             verts=bm.verts)
         bc.bm_to_object(f"BOB_Shoe_{tag}", bm, coll, [M["shoe"]], subsurf=1)
 
