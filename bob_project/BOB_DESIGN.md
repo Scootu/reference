@@ -121,4 +121,5 @@ buttons in the 3D View sidebar (N → **Bob**).
 | `documentation/story_bible_and_workflow.md` | The Bob world, episode formula, Shorts workflow |
 | `documentation/style_extraction_2_5d.md` | Measurements taken from the reference frames |
 | `documentation/glassy_look.md` | How the glassy colour grade works |
+| `documentation/bob_world_style_resources.md` | Set and sequence styles for the Bob world (adapted from Lemo-Opuscar, CC BY 4.0) |
 | `reference/` | Client reference frames |
